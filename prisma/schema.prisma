@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== AUTH & USERS ====================
+
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  name      String
+  role      String   @default("USUARIO") // ADMIN, SUPERVISOR, USUARIO
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requisitionsCreated  Requisition[]  @relation("CreatedBy")
+  requisitionsApproved Requisition[]  @relation("ApprovedBy")
+  sessions             Session[]
+  productionLogs       ProductionLog[]
+  toolUsages           ToolUsage[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ==================== SUPPLIERS ====================
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  contact   String?
+  phone     String?
+  email     String?
+  address   String?
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products    ProductSupplier[]
+  requisitions Requisition[]
+}
+
+// ==================== INVENTORY ====================
+
+model InventoryItem {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  sku         String   @unique
+  category    String   // HERRAMIENTAS, MATERIAS_PRIMAS, CONSUMIBLES, DISENOS, OTROS
+  quantity    Int      @default(0)
+  minStock    Int      @default(5)
+  unit        String   @default("PIEZA")
+  location    String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  suppliers    ProductSupplier[]
+  requisitions RequisitionItem[]
+}
+
+model ProductSupplier {
+  id          String   @id @default(cuid())
+  productId   String
+  supplierId  String
+  price       Float
+  leadDays    Int      @default(7)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  product  InventoryItem @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier Supplier      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+}
+
+// ==================== REQUISITIONS ====================
+
+model Requisition {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  status      String   @default("PENDIENTE") // PENDIENTE, APROBADA, EN_CURSO, COMPLETADA, DENEGADA
+  priority    String   @default("MEDIA") // BAJA, MEDIA, ALTA, URGENTE
+  createdById String
+  approvedById String?
+  approvedAt  DateTime?
+  completedAt DateTime?
+  supplierId      String?
+  trackingNumber  String?  // Número de guía
+  hasInvoice      Boolean @default(false)  // Tiene factura
+  invoiceNumber   String?  // Número de factura
+  notes           String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy  User             @relation("CreatedBy", fields: [createdById], references: [id])
+  approvedBy User?            @relation("ApprovedBy", fields: [approvedById], references: [id])
+  supplier   Supplier?        @relation(fields: [supplierId], references: [id])
+  items      RequisitionItem[]
+}
+
+model RequisitionItem {
+  id             String @id @default(cuid())
+  requisitionId  String
+  inventoryItemId String
+  quantity       Int
+  notes          String?
+
+  requisition  Requisition  @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  inventoryItem InventoryItem @relation(fields: [inventoryItemId], references: [id])
+}
+
+// ==================== MATERIAL TYPES ====================
+
+model MaterialType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  description String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  stocks     MaterialStock[]
+  components ProjectComponent[]
+}
+
+// ==================== MATERIAL STOCK ====================
+
+model MaterialStock {
+  id           String   @id @default(cuid())
+  typeId       String
+  shape        String   // REDONDA, CUADRADA, LAMINA, TUBULAR
+  diameter     Float?   // for REDONDA and TUBULAR
+  width        Float?   // for CUADRADA and LAMINA
+  thickness    Float?   // for LAMINA and TUBULAR
+  lengthTotal  Float    @default(0)
+  lengthAvailable Float @default(0)
+  location     String?
+  weightPerMeter Float?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  type MaterialType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  reservations MaterialReservation[]
+}
+
+// ==================== SPECIAL MATERIALS ====================
+
+model SpecialMaterial {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  stockKg     Float    @default(0)
+  minStockKg  Float    @default(5)
+  unitCost    Float?
+  supplier    String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ==================== CONSUMABLE TOOLS ====================
+
+model ToolType {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  description String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tools ConsumableTool[]
+}
+
+model ConsumableTool {
+  id              String   @id @default(cuid())
+  name            String
+  typeId          String
+  description     String?
+  quantity        Int      @default(0)
+  minStock        Int      @default(3)
+  averageLifeSpan Int?     // in hours or uses
+  unit            String   @default("PIEZA")
+  location        String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  type ToolType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  usages ToolUsage[]
+}
+
+// ==================== PROJECTS ====================
+
+model Project {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  type          String   // MANDRIL, FIXTURA
+  status        String   @default("PENDIENTE") // PENDIENTE, EN_DISENO, MATERIALES_APARTADOS, EN_CORTE, EN_PRODUCCION, PAUSADO, COMPLETADO
+  priority      String   @default("MEDIA")
+  wastePercent  Float    @default(1.5) // 1.5% - 4%
+  startDate     DateTime?
+  dueDate       DateTime?
+  completedAt   DateTime?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  components   ProjectComponent[]
+  reservations MaterialReservation[]
+  logs         ProductionLog[]
+  toolUsages   ToolUsage[]
+}
+
+model ProjectComponent {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  description     String?
+  quantity        Int      @default(1)
+  materialTypeId  String?
+  status          String   @default("PENDIENTE")
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  materialType MaterialType? @relation(fields: [materialTypeId], references: [id])
+}
+
+// ==================== MATERIAL RESERVATIONS ====================
+
+model MaterialReservation {
+  id             String   @id @default(cuid())
+  projectId      String
+  materialStockId String
+  lengthReserved Float
+  status         String   @default("ACTIVA") // ACTIVA, LIBERADA
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project       Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  materialStock MaterialStock @relation(fields: [materialStockId], references: [id])
+}
+
+// ==================== PRODUCTION LOGS ====================
+
+model ProductionLog {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+}
+
+// ==================== TOOL USAGE ====================
+
+model ToolUsage {
+  id        String   @id @default(cuid())
+  toolId    String
+  projectId String?
+  userId    String
+  quantity  Int      @default(1)
+  notes     String?
+  createdAt DateTime @default(now())
+
+  tool     ConsumableTool @relation(fields: [toolId], references: [id])
+  project  Project?       @relation(fields: [projectId], references: [id])
+  user     User           @relation(fields: [userId], references: [id])
+}
